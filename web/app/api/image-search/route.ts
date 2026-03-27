@@ -5,13 +5,16 @@ import {
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NextResponse } from "next/server";
+import { awsCredentials, awsRegion } from "@/lib/aws";
 
 const client = new BedrockAgentRuntimeClient({
-  region: process.env.AWS_REGION ?? "us-east-1",
+  region: awsRegion,
+  ...awsCredentials,
 });
 
 const s3 = new S3Client({
-  region: process.env.AWS_REGION ?? "us-east-1",
+  region: awsRegion,
+  ...awsCredentials,
 });
 
 const KNOWLEDGE_BASE_ID = process.env.KNOWLEDGE_BASE_ID!;
@@ -34,6 +37,20 @@ export async function POST(req: Request) {
       new RetrieveCommand({
         knowledgeBaseId: KNOWLEDGE_BASE_ID,
         retrievalQuery: { text: query },
+        retrievalConfiguration: {
+          vectorSearchConfiguration: {
+            overrideSearchType: "HYBRID",
+            rerankingConfiguration: {
+              type: "BEDROCK_RERANKING_MODEL",
+              bedrockRerankingConfiguration: {
+                numberOfRerankedResults: 5,
+                modelConfiguration: {
+                  modelArn: `arn:aws:bedrock:${awsRegion}::foundation-model/amazon.rerank-v1:0`,
+                },
+              },
+            },
+          },
+        },
       }),
     );
 

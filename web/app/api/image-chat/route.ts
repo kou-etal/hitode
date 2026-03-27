@@ -5,24 +5,27 @@ import {
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { fromSSO } from "@aws-sdk/credential-provider-sso";
 import { convertToModelMessages, streamText } from "ai";
+import { awsCredentials, awsRegion } from "@/lib/aws";
 
 const kbClient = new BedrockAgentRuntimeClient({
-  region: process.env.AWS_REGION ?? "us-east-1",
+  region: awsRegion,
+  ...awsCredentials,
 });
 
 const s3 = new S3Client({
-  region: process.env.AWS_REGION ?? "us-east-1",
+  region: awsRegion,
+  ...awsCredentials,
 });
 
 const KNOWLEDGE_BASE_ID = process.env.KNOWLEDGE_BASE_ID!;
 const RAW_BUCKET = process.env.RAW_IMAGE_BUCKET!;
 
+const profile = process.env.AWS_PROFILE;
 const bedrockProvider = createAmazonBedrock({
-  region: process.env.AWS_REGION ?? "us-east-1",
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  sessionToken: process.env.AWS_SESSION_TOKEN,
+  region: awsRegion,
+  ...(profile ? { credentialProvider: fromSSO({ profile }) } : {}),
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,9 +62,24 @@ export async function POST(req: Request) {
 
     try {
       const result = await kbClient.send(
+        //RetrieveCommandの設定はリクエストのたびに、決める。CDKのスタックとは別。
         new RetrieveCommand({
           knowledgeBaseId: KNOWLEDGE_BASE_ID,
           retrievalQuery: { text: query },
+          retrievalConfiguration: {
+            vectorSearchConfiguration: {
+              overrideSearchType: "HYBRID",
+              rerankingConfiguration: {
+                type: "BEDROCK_RERANKING_MODEL",
+                bedrockRerankingConfiguration: {
+                  numberOfRerankedResults: 5,
+                  modelConfiguration: {
+                    modelArn: `arn:aws:bedrock:${awsRegion}::foundation-model/amazon.rerank-v1:0`,
+                  },
+                },
+              },
+            },
+          },
         }),
       );
 

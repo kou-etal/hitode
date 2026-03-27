@@ -1,16 +1,8 @@
 @import "tailwindcss";
-/* Add KaTeX CSS for math rendering */
-@import "katex/dist/katex.min.css";
-
-/* include utility classes in streamdown */
-@source "../node_modules/streamdown/dist/index.js";
 
 /* custom variant for setting dark mode programmatically */
 @custom-variant dark (&:is(.dark, .dark *));
 
-/* include plugins */
-@plugin "tailwindcss-animate";
-@plugin "@tailwindcss/typography";
 
 /* define design tokens (light mode) */
 :root {
@@ -228,45 +220,6 @@
   }
 }
 
-.ProseMirror {
-  outline: none;
-}
-
-.cm-editor,
-.cm-gutters {
-  @apply bg-background! dark:bg-zinc-800! outline-hidden! selection:bg-zinc-900!;
-}
-
-.ͼo.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,
-.ͼo.cm-selectionBackground,
-.ͼo.cm-content::selection {
-  @apply bg-zinc-200! dark:bg-zinc-900!;
-}
-
-.cm-activeLine,
-.cm-activeLineGutter {
-  @apply bg-transparent!;
-}
-
-.cm-activeLine {
-  @apply rounded-r-sm!;
-}
-
-.cm-lineNumbers {
-  @apply min-w-7;
-}
-
-.cm-foldGutter {
-  @apply min-w-3;
-}
-
-.cm-lineNumbers .cm-activeLineGutter {
-  @apply rounded-l-sm!;
-}
-
-.suggestion-highlight {
-  @apply bg-blue-200 hover:bg-blue-300 dark:hover:bg-blue-400/50 dark:text-blue-50 dark:bg-blue-500/40;
-}
 
 /* minimal scrollbar styling */
 ::-webkit-scrollbar {

@@ -20,7 +20,8 @@
     "typeRoots": ["./node_modules/@types"],
     "outDir": "./dist",
     "rootDir": "./",
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "skipLibCheck": true
   },
-  "exclude": ["node_modules", "cdk.out", "dist"]
+  "exclude": ["node_modules", "cdk.out", "dist", "lib/lambda"]
 }

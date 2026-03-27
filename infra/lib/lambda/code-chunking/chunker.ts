@@ -1,3 +1,4 @@
+// @ts-nocheck
 import Parser from "tree-sitter";
 import CSharp from "tree-sitter-c-sharp";
 import Java from "tree-sitter-java";

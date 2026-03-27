@@ -1,0 +1,2 @@
+
+An error occurred (ExpiredTokenException) when calling the FilterLogEvents operation: The security token included in the request is expired
