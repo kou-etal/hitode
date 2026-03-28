@@ -49,7 +49,9 @@ dev環境ではこれをリソースも消すように設定。*/
   それがnodejs.NodejsFunction。ここでtsからesbuild->デプロイしてる。デプロイ先のs3は自動生成。
   nodejs使うためのランタイム設定のlambda import。infraもデプロイする。
   npm run buildで型チェックしてからesbuild。これは非効率にも思える。
-  cdk deployコマンドにtsc入れるのもあり。まあでも型チェックはCI/CDとかで担保してるからdeployはesbuildという考え方もあり。*/
+  cdk deployコマンドにtsc入れるのもあり。まあでも型チェックはCI/CDとかで担保してるからdeployはesbuildという考え方もあり。
+   普通のLambda (lambda.Function)は自分でビルド(tsc) → dist/にJS出力 → distをzipにしてデプロイやけど
+    NodejsFunction:TSファイルを設定し、CDKがesbuild で自動ビルド+バンドル → zipにしてS3に上げてデプロイ */
   /* CfnOutput　デプロイ完了後にターミナルに値を表示する。なくても動く。便利機能
 このプロジェクトでの使い方（L213, L217, L221）
   new CfnOutput(this, "RawImageBucketName", {

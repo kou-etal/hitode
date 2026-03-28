@@ -2,6 +2,9 @@
 //nodeを探す
 //起動スクリプト。
 //CDKは必ずbin/→lib/の構造。
+//cdk版のdistがcdk.out。cdk synthでcdk.outが作られてそれをデプロイする。
+//今回はinfraとwebで両方pnpm installしている。分けて記述。pnpm　workspaceでまとめて書くこと可能。
+//tsconfigでcdk系のコマンドを使えるようにしてる。その設定がcdk.json
 import * as cdk from "aws-cdk-lib";
 //aws-cdk-lib パッケージがエクスポートしてるもの全部を、cdk という名前にまとめてインポート。
 /*import { App, CfnOutput, RemovalPolicy } from "aws-cdk-lib";
