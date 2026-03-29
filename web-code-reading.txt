@@ -1,0 +1,312 @@
+### 6. `web/app/layout.tsx` — ルートレイアウト
+
+**App RouterのLayout**。全ページに共通するHTML構造。
+
+```typescript
+export const metadata: Metadata = {
+  title: "Hitode - 画像チャット",
+  description: "画像をアップロードして、AIと画像について会話できるアプリ",
+};
+```
+- Next.jsの`Metadata` API — `<title>`や`<meta>`タグを自動生成
+
+```typescript
+export const viewport = {
+  maximumScale: 1,
+};
+```
+- モバイルSafariの自動ズームを無効化（inputフォーカス時にズームされるのを防ぐ）
+
+**フォント設定**（L17-27）：
+```typescript
+const geist = Geist({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-geist",
+});
+```
+- `next/font/google` — Googleフォントを自動ダウンロード・セルフホスト
+- `display: "swap"` — フォント読込中はシステムフォントで表示（FOIT回避）
+- `variable: "--font-geist"` — CSS変数として使えるようにする
+
+**テーマカラースクリプト**（L29-47）：
+```typescript
+const THEME_COLOR_SCRIPT = `\
+(function() {
+  ...
+  var observer = new MutationObserver(updateThemeColor);
+  observer.observe(html, { attributes: true, attributeFilter: ['class'] });
+  ...
+})();`;
+```
+- **IIFE**（即時実行関数式）— ページ読み込みと同時に実行
+- `MutationObserver` — DOMの変更を監視するブラウザAPI
+- `<html>`のclass属性の変更（`dark`の追加/削除）を監視して`<meta name="theme-color">`を更新
+- **なぜ`<script>`タグで直書き？** → Reactのhydration前（SSR段階）で実行する必要があるから
+
+```typescript
+<html
+  lang="ja"
+  suppressHydrationWarning
+>
+```
+- `suppressHydrationWarning` — `next-themes`がサーバーとクライアントでclass属性を変えるため、hydrationミスマッチ警告を抑制
+
+**`dangerouslySetInnerHTML`**（L67-69）：
+- ReactではXSS防止のためHTMLの直接挿入をデフォルト禁止している
+- このプロパティは「開発者が意図的にHTMLを注入している」ことを示す
+- `// biome-ignore` — Biome（リンター）の警告を1行だけ無効化
+
+**Provider構成**（L73-81）：
+```typescript
+<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+  <Toaster position="top-center" />
+  {children}
+</ThemeProvider>
+```
+- `ThemeProvider` — ダーク/ライトテーマ切り替え機能を提供
+- `Toaster` — sonner（トースト通知ライブラリ）のコンテナ。`{children}`より前に置くことで、どのページからもトースト表示可能
+- `{children}` — 各ページのコンテンツがここに入る
+
+---
+
+### 7. `web/app/image-chat/page.tsx` — チャットページ（メインUI）
+
+**`"use client"`** — Client Componentの宣言。`useState`や`useEffect`などのブラウザ側APIを使うため必要。
+
+**インターフェース定義**（L10-15）：
+```typescript
+interface ImageRef {
+  imageId: string;
+  filename: string;
+  imageUrl: string;
+  score: number;
+}
+```
+- APIレスポンスの型。TypeScriptの**型安全性** — 存在しないプロパティへのアクセスをコンパイル時に検出
+
+**`getTextFromParts`**（L17-24）：
+```typescript
+function getTextFromParts(parts: { type: string; text?: string }[]): string {
+  return (parts ?? [])
+    .filter((p) => p.type === "text" && p.text)
+    .map((p) => p.text)
+    .join("");
+}
+```
+- Vercel AI SDKのメッセージ形式では、コンテンツが`parts`配列で表現される
+- テキスト部分だけを抽出して結合
+
+**`parseImages`**（L26-40）：
+```typescript
+const match = text.match(/<!--IMAGES:(.*?)-->/s);
+```
+- `/s`フラグ — dot-all。`.`が改行にもマッチ
+- `(.*?)` — 非貪欲。最初に見つかった`-->`で止まる
+- LLMが出力した`<!--IMAGES:[...]-->`からJSONを取り出す
+- `try-catch` — JSONが壊れていても画面は表示される（graceful degradation）
+
+**`useChat`フック**（L45-49）：
+```typescript
+const { messages, sendMessage, status } = useChat({
+  transport: new DefaultChatTransport({
+    api: "/api/image-chat",
+  }),
+});
+```
+- `@ai-sdk/react`の中核フック
+- **`messages`** — 会話履歴の配列（リアクティブ。ストリーミング中も自動更新）
+- **`sendMessage`** — メッセージ送信関数
+- **`status`** — `"idle"` | `"submitted"` | `"streaming"` | `"error"`
+- **`DefaultChatTransport`** — HTTP(SSE)でバックエンドと通信するトランスポート
+
+**自動スクロール**（L56-61）：
+```typescript
+useEffect(() => {
+  scrollRef.current?.scrollTo({
+    top: scrollRef.current.scrollHeight,
+    behavior: "smooth",
+  });
+}, [messages]);
+```
+- `useEffect` — 副作用フック。`[messages]`が依存配列 = messagesが変わるたびに実行
+- `scrollRef.current?.scrollTo` — チャット領域を一番下までスムーズスクロール
+- `.current` — `useRef`で作った参照先のDOM要素
+
+**画像展開トグル**（L63-70）：
+```typescript
+const toggleImage = (id: string) => {
+  setExpandedImages((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+};
+```
+- `Set`を使って展開済みの画像IDを管理
+- **関数型更新** `setExpandedImages((prev) => ...)` — 前の状態を元に新しい状態を計算
+- **なぜSetのコピー？** → Reactは参照が変わらないと再レンダリングしない。`new Set(prev)`で新しいオブジェクトを作ることで変更を検知させる
+
+**サジェストボタン**（L108-121）：
+```typescript
+{["プログラミングに関する画像を教えて", "風景の画像はある？", "赤い画像を探して"].map(
+  (suggestion) => (
+    <button key={suggestion} onClick={() => handleSend(suggestion)} ...>
+      {suggestion}
+    </button>
+  )
+)}
+```
+- 配列の`.map()`でReact要素を動的生成
+- `key={suggestion}` — Reactが要素を効率的に追跡するための一意キー
+
+**条件付きレンダリング**（L192-200）：
+```typescript
+{isLoading && messages[messages.length - 1]?.role === "user" && (
+  <div>検索中...</div>
+)}
+```
+- `&&`演算子 — 左がtrueなら右を表示。JSXでの条件分岐の定番パターン
+- 「ローディング中 かつ 最後のメッセージがユーザーのもの」の時だけ表示
+
+---
+
+### 8. `web/app/images/page.tsx` — アップロード＋検索ページ
+
+**アップロード処理**（L35-83）：
+```typescript
+for (const file of Array.from(files)) {
+```
+- `FileList`は配列ではないので`Array.from()`で変換（`for...of`でイテレート可能にする）
+
+```typescript
+const tempId = crypto.randomUUID();
+```
+- `crypto.randomUUID()` — ブラウザのWeb Crypto API（Node.jsの`node:crypto`とは別だが同じ仕様）
+- presigned URL取得前の一時IDとしてUIの状態管理に使う
+
+**2段階アップロード**（L48-63）：
+```
+ブラウザ → Next.js API → presigned URL取得
+ブラウザ → S3に直接PUT（presigned URL使用）
+```
+- ファイルの実データはNext.jsサーバーを経由しない（S3に直接行く）
+- **メリット：** サーバーの帯域・メモリを消費しない。大きなファイルでも問題ない
+
+**状態更新**（L65-71）：
+```typescript
+setUploads((prev) =>
+  prev.map((u) =>
+    u.imageId === tempId
+      ? { ...u, imageId, status: "done" as const }
+      : u,
+  ),
+);
+```
+- `as const` — リテラル型を保証。`"done" as const`は`string`ではなく`"done"`型
+- `...u`スプレッドで既存プロパティをコピーし、`imageId`と`status`だけ上書き（イミュータブル更新）
+
+**検索処理**（L85-103）— シンプルなPOST → 結果をsetState。image-chat APIと違い、LLM呼び出しなし。
+
+**UIの構造：**
+- ヘッダー（image-chatページへの「Chat」リンク付き）
+- アップロードセクション（`<input type="file" multiple>`）
+- 検索セクション（テキスト入力 + ボタン）
+- 結果グリッド（2カラム、カード形式）
+
+**PDFの分岐**（L211-226）：
+```typescript
+{r.filename.toLowerCase().endsWith(".pdf") ? (
+  <iframe src={r.imageUrl} ... />
+) : (
+  <img src={r.imageUrl} ... />
+)}
+```
+- PDFなら`<iframe>`、画像なら`<img>`で表示
+- `onError`でエラー時に画像非表示（壊れたアイコンを見せない）
+
+---
+
+### 9. UIコンポーネント（shadcn/ui）
+
+**`theme-provider.tsx`** — `next-themes`のラッパー。8行だけ。`"use client"`で Client Component 化している理由は、`next-themes`がブラウザの`localStorage`を使うから。
+
+**`button.tsx`** — `class-variance-authority`(cva)パターン：
+```typescript
+const buttonVariants = cva("ベースクラス", {
+  variants: {
+    variant: { default: "...", outline: "...", ghost: "..." },
+    size: { default: "...", sm: "...", lg: "..." },
+  },
+  defaultVariants: { variant: "default", size: "default" },
+});
+```
+- **variant** × **size** の組み合わせでスタイルが決まる（6×4=24パターン）
+- `React.forwardRef` — 親コンポーネントからDOM要素への参照を渡せるようにする
+- `asChild` + `SlotPrimitive.Slot` — Radix UIのパターン。Button のスタイルを子要素に転送
+  - 例：`<Button asChild><a href="/">Home</a></Button>` → `<a>`にボタンのスタイルが適用される
+
+**`card.tsx`** — Card / CardHeader / CardTitle / CardDescription / CardContent / CardFooter の6コンポーネント。全て`forwardRef` + `cn()`パターン。
+
+**`input.tsx`** — 同じパターン。`file:`プレフィクスはTailwindの`::file-selector-button`疑似要素用。
+
+---
+
+### 10. 設定ファイル
+
+**`globals.css`** — Tailwind CSS v4 の設定：
+- `@import "tailwindcss"` — v4ではこれだけでOK（v3では3つのディレクティブが必要だった）
+- `@custom-variant dark` — ダークモードの条件を定義
+- `:root` / `.dark` — CSS変数でデザイントークン定義（shadcn/uiの規約）
+- `@theme` — Tailwindにカスタムテーマ値を登録
+- `@utility` — カスタムユーティリティクラスの定義
+- `@layer base` — ベーススタイル（全要素への適用）
+
+**`next.config.ts`**：
+- `ignoreBuildErrors: true` — TypeScriptエラーがあってもビルドを通す（本番ではやらない方がいい）
+- `turbopack: { root: process.cwd() }` — Turbopackのルートディレクトリ設定
+- `images.remotePatterns` — Vercel関連。今のプロジェクトでは不要（前身の残り）
+
+**`postcss.config.mjs`** — `@tailwindcss/postcss`プラグインのみ。Tailwind v4はPostCSSプラグインとして動作。
+
+**`tsconfig.json`**：
+- `"paths": { "@/*": ["./*"] }` — `@/lib/aws`が`./lib/aws`に解決される
+- `"jsx": "react-jsx"` — `import React`不要でJSXが書ける（React 17+の新JSXトランスフォーム）
+- `"strictNullChecks": true` — `null`/`undefined`を型チェックに含める
+
+**`package.json`**：
+- **フレームワーク:** Next.js 16.1.6, React 19.2.0
+- **AI SDK:** `ai` 5.0.93 + `@ai-sdk/react` 2.0.93 + `@ai-sdk/amazon-bedrock` 3.0.56
+- **AWS SDK v3:** bedrock-agent-runtime, s3, credential-provider-sso, s3-request-presigner
+- **UI:** Tailwind CSS 4, Radix UI, shadcn/ui系（clsx, cva, tailwind-merge）
+- **リンター:** Biome（ESLint + Prettierの代替、Rustで書かれていて高速）
+- **`"dev": "next dev --turbo"`** — Turbopack使用（Webpack比で高速なHMR）
+
+---
+
+## Web側全体のアーキテクチャまとめ
+
+```
+ブラウザ
+├── /image-chat  (page.tsx) ← チャットUI
+│   └── useChat → POST /api/image-chat → KB検索 + Claude Sonnet ストリーミング
+│
+├── /images  (page.tsx) ← アップロード＋検索UI
+│   ├── POST /api/image-upload → presigned URL取得
+│   │   └── PUT presigned URL → S3直接アップロード
+│   └── POST /api/image-search → KB検索のみ（LLMなし）
+│
+├── lib/aws.ts ← AWS認証共通
+├── lib/utils.ts ← cn()関数
+└── components/ui/* ← shadcn/uiコンポーネント
+```
+
+**データフローの全体像：**
+```
+1. アップロード: ブラウザ → presigned URL → S3 (raw-images/)
+2. OCR処理:     S3イベント → Lambda → Claude Vision → S3 (datasource/)
+3. KB同期:      S3イベント → Lambda → Bedrock KB → Pinecone
+4. 検索:        ブラウザ → Next.js API → Bedrock KB (HYBRID+reranking) → レスポンス
+5. チャット:    ブラウザ → Next.js API → KB検索 + Claude Sonnet → SSEストリーミング
+```

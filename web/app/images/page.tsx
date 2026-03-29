@@ -202,7 +202,9 @@ export default function ImagesPage() {
             </h2>
 
             {results.length === 0 ? (
-              <p className="text-muted-foreground">画像が見つかりませんでした。</p>
+              <p className="text-muted-foreground">
+                画像が見つかりませんでした。
+              </p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {results.map((r) => (
@@ -220,7 +222,8 @@ export default function ImagesPage() {
                           alt={r.filename}
                           className="object-contain w-full h-full"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
+                            (e.target as HTMLImageElement).style.display =
+                              "none";
                           }}
                         />
                       )}

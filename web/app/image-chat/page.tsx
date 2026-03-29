@@ -14,9 +14,7 @@ interface ImageRef {
   score: number;
 }
 
-function getTextFromParts(
-  parts: { type: string; text?: string }[],
-): string {
+function getTextFromParts(parts: { type: string; text?: string }[]): string {
   return (parts ?? [])
     .filter((p) => p.type === "text" && p.text)
     .map((p) => p.text)
@@ -101,9 +99,7 @@ export default function ImageChatPage() {
           {messages.length === 0 && (
             <div className="text-center text-muted-foreground mt-20">
               <p className="text-2xl mb-2">画像に関するチャット</p>
-              <p className="text-sm">
-                画像について質問してみてください
-              </p>
+              <p className="text-sm">画像について質問してみてください</p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 {[
                   "プログラミングに関する画像を教えて",
@@ -139,9 +135,7 @@ export default function ImageChatPage() {
               >
                 <div
                   className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                    isUser
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
+                    isUser ? "bg-primary text-primary-foreground" : "bg-muted"
                   }`}
                 >
                   <div className="whitespace-pre-wrap text-sm">{cleanText}</div>
