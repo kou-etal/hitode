@@ -1,4 +1,4 @@
-"use client";
+"use client";//クライアントコンポーネント
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,56 +12,91 @@ interface SearchResult {
   description: string;
   score: number;
   imageUrl: string;
-}
+}//TODO:別にフロントにs3Keyとか使ってない。
 
 interface UploadedImage {
   imageId: string;
   filename: string;
   status: "uploading" | "done" | "error";
-}
+}//これrequest用、APIの通信に使う型ではない。フロントのUI状態管理用の型。
 
 export default function ImagesPage() {
-  // Upload state
+  // upload系。これはUI表示用。
   const [uploads, setUploads] = useState<UploadedImage[]>([]);
+  //uploadsはそれぞれでstatusが異なるからsearchedとは違い
+  // const [searched, setSearched] = useState(false);で定義せずにuploadsに含める。
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  //TODO:isUploadingは冗長。uploadsから計算できる。 const isUploading = uploads.some(u => u.status === "uploading");
+  //stateから計算できるものはuseStateにしないのが原則。
 
-  // Search state
+  // Search系
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searched, setSearched] = useState(false);
 
   const handleUpload = async (files: FileList | null) => {
+    //FileListはブラウザのWeb API標準の型。<input type="file">が返すファイルの一覧。
+    //fileのinputはFileList | nullを返す。これがブラウザの仕様。
+    //ファイル押してダイアログ開いてキャンセルした場合onchangeが動いてnullになる場合ある。
+    //ゆえにその場合はreturnで分岐する。
+    //input textの場合は型がstringだけになるからnull許容しないでいい。
     if (!files || files.length === 0) return;
     setIsUploading(true);
 
     for (const file of Array.from(files)) {
+      //filelistは配列に似てるけど配列ではないから.map .filter使えない。
+      //ゆえにArray.from(files)で配列にしてから扱う。
+      //Array.from(files).map(...)でも可能。
+      //現在は一枚ずつアップロードになっているがmapにした場合promise.all使って並列にできる。
+      //並列にすると効率は良くなるが大量アップロードでブラウザに負荷かかる。
+      //TODO:安全をとる現在、並列にして効率にするかの設計判断。
+
       const tempId = crypto.randomUUID();
       setUploads((prev) => [
         { imageId: tempId, filename: file.name, status: "uploading" },
         ...prev,
-      ]);
+      ]);//ここはupload状態を表示するUI部分。
+      //1枚目がアップロードされるとuploading->doneに遷移して次2枚目は1枚目の結果を受け取ってから2枚目の状況を表示する。
+      //一旦loadingUIを表示するために仮のuuidを作っている。status更新の際にimageIDで識別するからuuid必須。重複不可。
 
       try {
         // 1. presigned URL取得
-        const res = await fetch("/api/image-upload", {
+        //try一つの中にapi叩き二つ。
+        //今回は一つ目失敗したら二つ目不可能。二つ目が一つ目に依存している。
+        //二つが独立してて一つ目が失敗しても二つ目の操作可能な場合二つのtryに分ける。
+        const res = await fetch("/api/image-upload", {//api叩きは非同期で行う。
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             filename: file.name,
             contentType: file.type,
-          }),
+          }),//bodyのデータはこれだけ。これに対してサーバーサイドがkey作ってpresigned url返す。
+          //bodyはjson必須やからJavaScriptのオブジェクト { filename: "dog.png", contentType: "image/png" }  
+          //これをJSON文字列{"filename":"cat.png","contentType":"image/png"}に変換する。
         });
         const { imageId, presignedUrl } = await res.json();
+        //ここで真のimageID受け取る。
+        /*TODO:これ型チェックするべき。
+         リクエストはzodで実行時チェック。レスポンスは asで型付けが実務標準。
+         */
+
 
         // 2. S3に直接アップロード
         await fetch(presignedUrl, {
           method: "PUT",
           headers: { "Content-Type": file.type },
-          body: file,
+          body: file,//ファイルの場合はjsonにせずにfileで扱える。
         });
 
+        //アップロード成功後に、該当するアップロードのstateを更新する。
+        //...uで展開。idが同様のuを更新する。tempid->imageid
+        // { ...u }         → { imageId: "temp-abc", filename: "cat.png", status: "uploading" }
+        //{ ...u, imageId } // → { imageId: "server-xyz", filename: "cat.png", status: "uploading" }
+        //doneはリテラル型であることを記述する。string型にならないように。
+        //prev[0].statusで変更してしまうとReactが変更と判断せずに再レンダリングされない。
+        //prev.mapでコピーすることで再レンダリングされる。
         setUploads((prev) =>
           prev.map((u) =>
             u.imageId === tempId
@@ -73,19 +108,31 @@ export default function ImagesPage() {
         setUploads((prev) =>
           prev.map((u) =>
             u.imageId === tempId ? { ...u, status: "error" as const } : u,
-          ),
+          ),//TODO:ログ出力。
         );
       }
     }
 
-    setIsUploading(false);
+    setIsUploading(false);//tryの外。全ファイルupload終了。
     if (fileInputRef.current) fileInputRef.current.value = "";
+    //fileInputRef.current — useRefで紐付けた<input type="file">のDOM要素
+    //リセットしないと同じファイルをもう一度アップロードしたい場合にonChangeが動かない。
+ 
   };
+  //exportの中身は定義+関数+html
 
+  //UI表示にずっと使う変数はusestateで宣言、一時的な変数は宣言しない。
+  //fileの場合はinputした後は使わない。->useStateではない。->引数になる。
+  /*queryの場合UI表示に使う。->useState-?引数使わずに
+  <Input                                                                                                                                         value={query}                          // ← queryを表示                                                                                  
+    onChange={(e) => setQuery(e.target.value)}  // ← 入力するたびにqueryを更新                                                               
+    placeholder="e.g. 赤い画像、風景写真..."
+  />*/
   const handleSearch = async () => {
-    if (!query.trim()) return;
+    if (!query.trim()) return;//TODO:!query.trim() || isSearchingで連打防止した方が良い。
     setIsSearching(true);
     setSearched(true);
+    //これは検索が終わったかではなく検索が実行されたかを表す変数。
 
     try {
       const res = await fetch("/api/image-search", {
@@ -94,9 +141,17 @@ export default function ImagesPage() {
         body: JSON.stringify({ query }),
       });
       const data = await res.json();
-      setResults(data.images ?? []);
+      /* 返り値は{
+    images: [
+      { imageId: "xxx", filename: "dog.png", s3Key: "...", description: "...", score: 0.95, imageUrl: "https://s3..." },
+      // ...
+    ],
+    query: "赤い画像"  ← これフロントで使ってないから消していい。
+  }*/
+      setResults(data.images ?? []);//該当なしはあり得る。
     } catch {
       setResults([]);
+      //TODO:エラー出力
     }
 
     setIsSearching(false);

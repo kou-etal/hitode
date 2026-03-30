@@ -280,6 +280,7 @@ export class AmazonBedrockKbStack extends cdk.Stack {
     /* 6. Ingestion Lambda*/
 //これはs3->kbへのトリガー。lambdaが実行する側ではない->notificationでは記述できない->synclambda使う。
 // そうするとs3->lambdaのトリガーになる。
+//TODO:これ命名微妙。syncわかりにくい。trigger-kb-ingestionとかのほうが分かりやすい。
     const syncLambda = new nodejs.NodejsFunction(this, "SyncLambda", {
       entry: path.resolve(__dirname, "../lambda/sync-kb/index.ts"),
       runtime: lambda.Runtime.NODEJS_20_X,//TODO:これ統一する
